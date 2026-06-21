@@ -2,7 +2,7 @@ name: MLOps Pipeline
 
 on:
   push:
-    branches: [ cicd ]
+    branches: [cicd]
   workflow_dispatch:
 
 env:
@@ -27,7 +27,8 @@ jobs:
         python-version: '3.11'
 
     - name: Install dependencies
-      run: pip install -r requirements.txt
+      run: |
+        pip install -r requirements.txt
 
     - name: Generate dataset
       run: python generate_data.py
@@ -42,10 +43,10 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Push model to S3
+    - name: Push model to S3 directly
       run: |
         aws s3 cp models/churn_model.pkl s3://${{ env.S3_BUCKET }}/models/churn_model.pkl
-        echo "Model pushed to S3 successfully"
+        echo "Model pushed to S3 is success"
 
     - name: Update inference.yaml with S3 model path
       run: |
@@ -55,7 +56,7 @@ jobs:
     - name: Commit updated inference.yaml
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "GitHub Actions"
+        git config --local user.name "github-actions[bot]"
         git add k8s/inference.yaml
-        git commit -m "Update model S3 path [skip ci]" || echo "No changes to commit"
-        git push || echo "No changes to push"
+        git commit -m "Update model S3 path [skip ci]" || echo "No changes"
+        git push origin HEAD:cicd || echo "No changes to push"
