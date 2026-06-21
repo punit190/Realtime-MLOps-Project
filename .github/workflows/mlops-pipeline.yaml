@@ -31,7 +31,9 @@ jobs:
         pip install -r requirements.txt
 
     - name: Generate dataset
-      run: python generate_data.py
+      run: |
+        mkdir -p data
+        python generate_data.py
 
     - name: Train model
       run: python train.py
