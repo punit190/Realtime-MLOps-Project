@@ -36,7 +36,9 @@ jobs:
         python generate_data.py
 
     - name: Train model
-      run: python train.py
+      run: |
+        mkdir -p models
+        python train.py
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
