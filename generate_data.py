@@ -12,7 +12,7 @@ data = {
     'age': np.random.randint(18, 70, n_samples),
     'tenure_months': np.random.randint(1, 72, n_samples),
     'monthly_charges': np.random.uniform(20, 120, n_samples),
-    'total_charges': np.random.uniform(100, 8000, n_samples),
+    'total_charges': np.random.uniform(100, 9000, n_samples),
     'num_support_calls': np.random.randint(0, 10, n_samples),
 }
 
