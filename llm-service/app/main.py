@@ -4,13 +4,15 @@ from pydantic import BaseModel
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import Chroma
+# CHANGE THIS IMPORT:
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 app = FastAPI(title="LLMOps Retention Agent Service")
 
-# Setup safe local vector storage for POC learning parameters
-embeddings = OpenAIEmbeddings()
+# CHANGE THIS LINE: Use a lightweight free local embedding model
+embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 vector_db = Chroma(collection_name="retention_rules", embedding_function=embeddings)
 
 @app.on_event("startup")
@@ -31,14 +33,15 @@ class AgentState(TypedDict):
     context: str
     generated_email: str
 
-# --- LangGraph Nodes ---
 def retrieve_retention_playbook(state: AgentState) -> dict:
     query = "retention strategies for high contract pricing and technical issues"
     docs = vector_db.similarity_search(query, k=1)
-    context_text = docs[0].page_content if docs else "Offer standard customer save package."
+    context_text = docs[0].page_content if docs else "Offer standard customer loyalty save package."
     return {"context": context_text}
 
 def generate_retention_email(state: AgentState) -> dict:
+    # Note: If your OpenAI key has zero credits, this step will also return a 429 error.
+    # To practice 100% free without an OpenAI key, you can mock this return text or use a free LLM provider.
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
     prompt = ChatPromptTemplate.from_template(
         "You are an elite customer success supervisor. Write a brief email to "
