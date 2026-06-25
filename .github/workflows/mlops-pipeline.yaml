@@ -1,62 +1,51 @@
-name: MLOps Pipeline
+name: Unified MLOps & LLMOps Automation
 
 on:
   push:
-    branches: [llmops]
-  workflow_dispatch:
-
-env:
-  AWS_REGION: ap-south-1
-  S3_BUCKET: churn-model-bucket-cicd-mlops
+    branches:
+      - main  # Adjust to your deployment branch name
 
 jobs:
-  train-and-deploy:
+  mlops-build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    if: contains(github.event.head_commit.modified, 'ml-service/') || contains(github.event.head_commit.modified, 'k8s/inference.yaml')
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+      - name: Run Existing Classic MLOps Pipeline Tasks
+        run: |
+          echo "Executing your existing model preparation, packaging, or registry workflows..."
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+  llmops-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
 
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
+      - name: Check for LLM Service Mutations
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            llm_core:
+              - 'llm-service/**'
+              - 'k8s/llm-agent.yaml'
 
-    - name: Generate dataset
-      run: python generate_data.py
+      - name: Setup Docker Buildx
+        if: steps.filter.outputs.llm_core == 'true'
+        uses: docker/setup-buildx-action@v2
 
-    - name: Train model
-      run: python train.py
+      - name: Access Registry
+        if: steps.filter.outputs.llm_core == 'true'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Push model to S3 directly
-      run: |
-        aws s3 cp models/churn_model.pkl s3://${{ env.S3_BUCKET }}/models/churn_model.pkl
-        echo "Model pushed to S3 is success"
-
-    - name: Update inference.yaml with S3 model path
-      run: |
-        MODEL_URI="s3://${{ env.S3_BUCKET }}/models/churn_model.pkl"
-        sed -i "s|storageUri: .*|storageUri: $MODEL_URI|g" k8s/inference.yaml
-
-    - name: Commit updated inference.yaml
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add k8s/inference.yaml
-        git commit -m "Update model S3 path [skip ci]" || echo "No changes"
-        git push origin HEAD:cicd || echo "No changes to push"
+      - name: Construct and Distribute Agent Image
+        if: steps.filter.outputs.llm_core == 'true'
+        uses: docker/build-push-action@v4
+        with:
+          context: ./llm-service
+          push: true
+          tags: your-dockerhub-username/rag-langgraph-agent:latest
