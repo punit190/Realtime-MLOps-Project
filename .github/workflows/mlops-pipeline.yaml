@@ -3,20 +3,48 @@ name: Unified MLOps & LLMOps Automation
 on:
   push:
     branches:
-      - main  # Adjust to your deployment branch name
+      - main
+
+permissions:
+  contents: write  # Crucial to allow GitHub Actions to commit changes back to your repo
 
 jobs:
-  mlops-build:
+  mlops-pipeline:
     runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.modified, 'ml-service/') || contains(github.event.head_commit.modified, 'k8s/inference.yaml')
+    if: contains(github.event.head_commit.modified, 'ml-service/') || contains(github.event.head_commit.modified, 'k8s/inferenceservice.yaml')
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
-      - name: Run Existing Classic MLOps Pipeline Tasks
-        run: |
-          echo "Executing your existing model preparation, packaging, or registry workflows..."
 
-  llmops-build:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      # 1. Simulates model training and pushes the binary artifact directly to your S3 bucket folder
+      - name: Deploy Model Artifact to S3
+        run: |
+          echo "Packaging trained model..."
+          # Replace './ml-service/model.bst' with your actual local artifact path if different
+          aws s3 cp ./ml-service/model.bst s3://churn-model-bucket-cicd-mlops/models/v_${{ github.sha }}/model.bst
+
+      # 2. Automatically updates the inferenceservice.yaml with the new S3 folder path
+      - name: Update KServe Storage URI
+        run: |
+          sed -i "s|storageUri:.*|storageUri: \"s3://churn-model-bucket-cicd-mlops/models/v_${{ github.sha }}\"|g" k8s/inferenceservice.yaml
+
+      # 3. Pushes manifest updates back to Git so ArgoCD triggers an automatic sync
+      - name: Commit and Push MLOps Manifest Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/inferenceservice.yaml
+          git commit -m "chore(mlops): deploy model version v_${{ github.sha }} [skip ci]" || echo "No changes to commit"
+          git push
+
+  llmops-pipeline:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
@@ -42,10 +70,27 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # 1. Builds and distributes the container using the unique commit hash instead of "latest"
       - name: Construct and Distribute Agent Image
         if: steps.filter.outputs.llm_core == 'true'
         uses: docker/build-push-action@v4
         with:
           context: ./llm-service
           push: true
-          tags: your-dockerhub-username/rag-langgraph-agent:latest
+          tags: punit19/rag-langgraph-agent:${{ github.sha }}
+
+      # 2. Automatically updates the llm-agent.yaml file with the specific image tag
+      - name: Update K8s Manifest Image Tag
+        if: steps.filter.outputs.llm_core == 'true'
+        run: |
+          sed -i "s|image: punit19/rag-langgraph-agent:.*|image: punit19/rag-langgraph-agent:${{ github.sha }}|g" k8s/llm-agent.yaml
+
+      # 3. Pushes manifest updates back to Git to complete the GitOps sync loop
+      - name: Commit and Push LLMOps Manifest Changes
+        if: steps.filter.outputs.llm_core == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/llm-agent.yaml
+          git commit -m "chore(llmops): bump agent image tag to ${{ github.sha }} [skip ci]" || echo "No changes to commit"
+          git push
