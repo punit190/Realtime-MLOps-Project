@@ -11,12 +11,21 @@ permissions:
 jobs:
   mlops-pipeline:
     runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.modified, 'ml-service/') || contains(github.event.head_commit.modified, 'k8s/inferenceservice.yaml')
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
+      - name: Check for ML Service Mutations
+        id: filter_ml
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ml_core:
+              - 'ml-service/**'
+              - 'k8s/inferenceservice.yaml'
+
       - name: Configure AWS Credentials
+        if: steps.filter_ml.outputs.ml_core == 'true'
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -25,20 +34,22 @@ jobs:
 
       # 1. Simulates model training and pushes the binary artifact directly to your S3 bucket folder
       - name: Deploy Model Artifact to S3
+        if: steps.filter_ml.outputs.ml_core == 'true'
         run: |
           echo "Packaging trained model..."
-          # Replace './ml-service/model.bst' with your actual local artifact path if different
           aws s3 cp ./ml-service/model.bst s3://churn-model-bucket-cicd-mlops/models/v_${{ github.sha }}/model.bst
 
       # 2. Automatically updates the inferenceservice.yaml with the new S3 folder path
       - name: Update KServe Storage URI
+        if: steps.filter_ml.outputs.ml_core == 'true'
         run: |
           sed -i "s|storageUri:.*|storageUri: \"s3://churn-model-bucket-cicd-mlops/models/v_${{ github.sha }}\"|g" k8s/inferenceservice.yaml
 
       # 3. Pushes manifest updates back to Git so ArgoCD triggers an automatic sync
       - name: Commit and Push MLOps Manifest Changes
+        if: steps.filter_ml.outputs.ml_core == 'true'
         run: |
-          git config --global user.name "punit19"
+          git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add k8s/inferenceservice.yaml
           git commit -m "chore(mlops): deploy model version v_${{ github.sha }} [skip ci]" || echo "No changes to commit"
@@ -46,12 +57,17 @@ jobs:
 
   llmops-pipeline:
     runs-on: ubuntu-latest
+    needs: mlops-pipeline # <--- Forces MLOps to run and finish successfully first
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
+      # Pull latest changes in case MLOps job committed manifest updates
+      - name: Pull Latest Changes
+        run: git pull origin llmops
+
       - name: Check for LLM Service Mutations
-        id: filter
+        id: filter_llm
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -60,19 +76,19 @@ jobs:
               - 'k8s/llm-agent.yaml'
 
       - name: Setup Docker Buildx
-        if: steps.filter.outputs.llm_core == 'true'
+        if: steps.filter_llm.outputs.llm_core == 'true'
         uses: docker/setup-buildx-action@v2
 
       - name: Access Registry
-        if: steps.filter.outputs.llm_core == 'true'
+        if: steps.filter_llm.outputs.llm_core == 'true'
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 1. Builds and distributes the container using the unique commit hash instead of "latest"
+      # 1. Builds and distributes the container using the unique commit hash
       - name: Construct and Distribute Agent Image
-        if: steps.filter.outputs.llm_core == 'true'
+        if: steps.filter_llm.outputs.llm_core == 'true'
         uses: docker/build-push-action@v4
         with:
           context: ./llm-service
@@ -81,15 +97,15 @@ jobs:
 
       # 2. Automatically updates the llm-agent.yaml file with the specific image tag
       - name: Update K8s Manifest Image Tag
-        if: steps.filter.outputs.llm_core == 'true'
+        if: steps.filter_llm.outputs.llm_core == 'true'
         run: |
           sed -i "s|image: punit19/rag-langgraph-agent:.*|image: punit19/rag-langgraph-agent:${{ github.sha }}|g" k8s/llm-agent.yaml
 
       # 3. Pushes manifest updates back to Git to complete the GitOps sync loop
       - name: Commit and Push LLMOps Manifest Changes
-        if: steps.filter.outputs.llm_core == 'true'
+        if: steps.filter_llm.outputs.llm_core == 'true'
         run: |
-          git config --global user.name "punit190"
+          git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add k8s/llm-agent.yaml
           git commit -m "chore(llmops): bump agent image tag to ${{ github.sha }} [skip ci]" || echo "No changes to commit"
