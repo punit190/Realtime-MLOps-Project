@@ -102,7 +102,7 @@ jobs:
       # 2. Automatically updates the llm-agent.yaml file with the specific image tag
       - name: Update K8s Manifest Image Tag
         run: |
-          sed -i "s|image: punit19/rag-langgraph-agent:.*|image: punit19/rag-langgraph-agent:${{ github.sha }}|g" k8s/llm-agent.yaml
+          sed -i "s|image:.*rag-langgraph-agent.*|image: punit19/rag-langgraph-agent:${{ github.sha }}|g" k8s/llm-agent.yaml
 
       # 3. Pushes manifest updates back to Git to complete the GitOps sync loop
       - name: Commit and Push LLMOps Manifest Changes
