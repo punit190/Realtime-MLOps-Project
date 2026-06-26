@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: agent-container
-        image: punit19/rag-langgraph-agent:latest
+        image: punit19/rag-langgraph-agent:97f90a49519051d28884f36a26ca5ee62bd64a65
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
