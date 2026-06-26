@@ -11,4 +11,4 @@ spec:
   predictor:
     serviceAccountName: sa-s3-access
     sklearn:
-      storageUri: "s3://churn-model-bucket-cicd-mlops/models/v_55da41bedaa5957da66cc668afac79fd0bf4b9fd/"
+      storageUri: "s3://churn-model-bucket-cicd-mlops/models/v_97f90a49519051d28884f36a26ca5ee62bd64a65/"
