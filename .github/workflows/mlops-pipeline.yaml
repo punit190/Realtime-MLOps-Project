@@ -15,6 +15,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
+      # Robust path filtering that accurately detects changes, additions, or deletions
       - name: Check for ML Service Mutations
         id: filter_ml
         uses: dorny/paths-filter@v3
@@ -57,12 +58,12 @@ jobs:
 
   llmops-pipeline:
     runs-on: ubuntu-latest
-    needs: mlops-pipeline # <--- Forces MLOps to run and finish successfully first
+    needs: mlops-pipeline # <--- Force LLMOps to wait until MLOps has finished running completely
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
-      # Pull latest changes in case MLOps job committed manifest updates
+      # CRUCIAL: Pull any manifest updates committed by the MLOps stage right before evaluating LLMOps paths
       - name: Pull Latest Changes
         run: git pull origin llmops
 
