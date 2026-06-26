@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write  # Crucial to allow GitHub Actions to commit changes back to your repo
 
+env:
+  AWS_REGION: ap-south-1
+  S3_BUCKET: churn-model-bucket-cicd-mlops
+
 jobs:
   mlops-pipeline:
     runs-on: ubuntu-latest
@@ -15,23 +19,44 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
+      # --- START OF ACTUAL MODEL TRAINING STEPS ---
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Generate dataset
+        run: |
+          mkdir -p data
+          python generate_data.py
+
+      - name: Train model
+        run: |
+          mkdir -p models
+          python train.py
+
+      # --- START OF ARTIFACT DEPLOYMENT & GITOPS ---
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      # 1. Simulates model training and pushes the binary artifact directly to your S3 bucket folder
+      # 1. Pushes the dynamically created .pkl file to a unique versioned folder in S3
       - name: Deploy Model Artifact to S3
         run: |
-          echo "Packaging trained model..."
-          aws s3 cp ./ml-service/model.bst s3://churn-model-bucket-cicd-mlops/models/v_${{ github.sha }}/model.bst
+          echo "Uploading trained pickle model to S3..."
+          aws s3 cp models/churn_model.pkl s3://${{ env.S3_BUCKET }}/models/v_${{ github.sha }}/churn_model.pkl
 
-      # 2. Automatically updates the inferenceservice.yaml with the new S3 folder path
+      # 2. Automatically updates the inferenceservice.yaml with the unique S3 model folder path
       - name: Update KServe Storage URI
         run: |
-          sed -i "s|storageUri:.*|storageUri: \"s3://churn-model-bucket-cicd-mlops/models/v_${{ github.sha }}\"|g" k8s/inferenceservice.yaml
+          sed -i "s|storageUri:.*|storageUri: \"s3://${{ env.S3_BUCKET }}/models/v_${{ github.sha }}/\"|g" k8s/inferenceservice.yaml
 
       # 3. Pushes manifest updates back to Git so ArgoCD triggers an automatic sync
       - name: Commit and Push MLOps Manifest Changes
@@ -44,7 +69,7 @@ jobs:
 
   llmops-pipeline:
     runs-on: ubuntu-latest
-    needs: mlops-pipeline # <--- Strictly forces LLMOps to wait until MLOps successfully finishes
+    needs: mlops-pipeline # <--- Strictly forces LLMOps to wait until MLOps finishes training and pushing
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
