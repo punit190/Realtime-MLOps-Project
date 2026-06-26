@@ -3,7 +3,7 @@ name: Unified MLOps & LLMOps Automation
 on:
   push:
     branches:
-      - main
+      - llmops
 
 permissions:
   contents: write  # Crucial to allow GitHub Actions to commit changes back to your repo
