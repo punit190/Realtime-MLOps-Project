@@ -54,8 +54,8 @@ def generate_retention_email(state: AgentState) -> dict:
         f"Customer Retention Specialist Team"
     )
     
-    # Return the dictionary back to LangGraph
-    return {"agent_output": mock_llm_response}
+    # FIX: Change the key from "agent_output" to "generated_email"
+    return {"generated_email": mock_llm_response}
     # Note: If your OpenAI key has zero credits, this step will also return a 429 error.
     # To practice 100% free without an OpenAI key, you can mock this return text or use a free LLM provider.
     #llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
