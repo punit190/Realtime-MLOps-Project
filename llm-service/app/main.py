@@ -40,17 +40,33 @@ def retrieve_retention_playbook(state: AgentState) -> dict:
     return {"context": context_text}
 
 def generate_retention_email(state: AgentState) -> dict:
+    """Bypasses the exhausted OpenAI API to return a data-driven, free mock response."""
+    customer_id = state.get("customer_id", "CUSTOMER-XYZ-12")
+    context = state.get("context", "Standard retention protocols apply.")
+    
+    mock_llm_response = (
+        f"Subject: Priority Retention Offer - Account {customer_id}\n\n"
+        f"Dear Customer ({customer_id}),\n\n"
+        f"We value your partnership. Based on our corporate playbook guidelines:\n"
+        f"👉 \"{context}\"\n\n"
+        f"We have applied these strategic optimization benefits directly to your account profile.\n\n"
+        f"Best regards,\n"
+        f"Customer Retention Specialist Team"
+    )
+    
+    # Return the dictionary back to LangGraph
+    return {"agent_output": mock_llm_response}
     # Note: If your OpenAI key has zero credits, this step will also return a 429 error.
     # To practice 100% free without an OpenAI key, you can mock this return text or use a free LLM provider.
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
-    prompt = ChatPromptTemplate.from_template(
-        "You are an elite customer success supervisor. Write a brief email to "
-        "customer {customer_id} based on this company protocol: {context}. "
-        "Keep the language warm, personalized, and action-oriented."
-    )
-    chain = prompt | llm
-    response = chain.invoke({"customer_id": state["customer_id"], "context": state["context"]})
-    return {"generated_email": response.content}
+    #llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+    #prompt = ChatPromptTemplate.from_template(
+        #"You are an elite customer success supervisor. Write a brief email to "
+        #"customer {customer_id} based on this company protocol: {context}. "
+        #"Keep the language warm, personalized, and action-oriented."
+    #)
+    #chain = prompt | llm
+    #response = chain.invoke({"customer_id": state["customer_id"], "context": state["context"]})
+    #return {"generated_email": response.content}
 
 # --- State Machine Compilation ---
 workflow = StateGraph(AgentState)
